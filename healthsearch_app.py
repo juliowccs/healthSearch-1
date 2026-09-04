@@ -273,7 +273,6 @@ def carregar_cross_encoder():
     )
 
 modelo = carregar_modelo()
-cross_encoder = carregar_cross_encoder()
 
 @st.cache_data
 def gerar_embeddings_documentos(textos):
@@ -539,6 +538,8 @@ df_rrf.insert(0, "Rank RRF", range(1, len(df_rrf) + 1))
 df_cross_encoder = None
 
 if usar_cross_encoder:
+    cross_encoder = carregar_cross_encoder()
+
     top_3 = df_rrf.head(3)
 
     pares = []
@@ -591,28 +592,78 @@ if usar_cross_encoder:
 # MATRIZ COMPARATIVA
 # ============================================================
 
+mapa_scores_bm25 = {
+    linha["ID"]: linha["Score BM25"]
+    for _, linha in df_bm25.iterrows()
+}
+
+mapa_scores_semantico = {
+    linha["ID"]: linha["Score Semântico"]
+    for _, linha in df_semantico.iterrows()
+}
+
+mapa_rank_rrf = {
+    linha["ID"]: (linha["Rank RRF"], linha["Score RRF"])
+    for _, linha in df_rrf.iterrows()
+}
+
 df_comparativa = df_rrf[
     [
         "ID",
-        "Título",
-        "Rank BM25",
-        "Rank Semântico",
-        "Rank RRF"
+        "Título"
     ]
 ].copy()
+
+df_comparativa["Rank - Score BM25"] = (
+    df_comparativa["ID"].map(
+        lambda doc_id: (
+            f"{df_bm25[df_bm25['ID'] == doc_id]['Rank'].iloc[0]} - "
+            f"{mapa_scores_bm25[doc_id]}"
+        )
+    )
+)
+
+df_comparativa["Rank Semântico - Cosseno"] = (
+    df_comparativa["ID"].map(
+        lambda doc_id: (
+            f"{df_semantico[df_semantico['ID'] == doc_id]['Rank'].iloc[0]} - "
+            f"{mapa_scores_semantico[doc_id]}"
+        )
+    )
+)
+
+df_comparativa["Rank - Score RRF"] = (
+    df_comparativa["ID"].map(
+        lambda doc_id: (
+            f"{mapa_rank_rrf[doc_id][0]} - "
+            f"{mapa_rank_rrf[doc_id][1]}"
+        )
+    )
+)
 
 # ============================================================
 # INTERFACE — ABAS
 # ============================================================
 
-tab_lexico, tab_semantico, tab_rrf, tab_comparativa = st.tabs(
-    [
-        "🔤 Léxico",
-        "🧠 Semântico",
-        "🔀 Híbrido RRF",
-        "📊 Matriz Comparativa"
-    ]
-)
+nomes_abas = [
+    "🔤 Léxico",
+    "🧠 Semântico",
+    "🔀 Híbrido RRF",
+    "📊 Matriz Comparativa",
+]
+
+if usar_cross_encoder:
+    nomes_abas.append("⚡ Cross-Encoder")
+
+abas = st.tabs(nomes_abas)
+
+tab_lexico = abas[0]
+tab_semantico = abas[1]
+tab_rrf = abas[2]
+tab_comparativa = abas[3]
+
+if usar_cross_encoder:
+    tab_cross = abas[4]
 
 # ============================================================
 # ABA 1 — LÉXICO
@@ -793,7 +844,7 @@ with tab_comparativa:
     st.markdown("---")
     st.subheader("📈 Comparação dos Rankings")
 
-    grafico = df_comparativa[
+    grafico = df_rrf[
         [
             "ID",
             "Rank BM25",
@@ -817,3 +868,70 @@ with tab_comparativa:
         "O RRF busca combinar as evidências dos dois "
         "métodos para produzir um ranking híbrido."
     )
+
+if usar_cross_encoder:
+    with tab_cross:
+        st.header("⚡ Cross-Encoder Re-Ranking")
+
+        st.write(
+            "O Cross-Encoder analisa a atenção cruzada par a par "
+            "entre a consulta e cada documento do Top-3 obtido "
+            "pela fusão RRF."
+        )
+
+        if df_cross_encoder is not None:
+            st.subheader("🔽 Ranking RRF (antes)")
+            st.dataframe(
+                df_rrf.head(3),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.markdown("---")
+            st.subheader("🔼 Ranking Cross-Encoder (depois)")
+            st.dataframe(
+                df_cross_encoder,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.markdown("---")
+            st.subheader("🎯 Mudança de Posição")
+
+            mapa_titulo = {
+                documento["id"]: documento["titulo"]
+                for documento in documentos
+            }
+
+            comparativo_ce = []
+
+            for _, linha in df_cross_encoder.iterrows():
+                doc_id = linha["ID"]
+
+                rank_rrf = df_rrf.loc[
+                    df_rrf["ID"] == doc_id,
+                    "Rank RRF"
+                ].iloc[0]
+
+                comparativo_ce.append({
+                    "ID": doc_id,
+                    "Título": mapa_titulo[doc_id],
+                    "Rank RRF (antes)": rank_rrf,
+                    "Rank Final (depois)": linha["Rank Final"],
+                    "Variação": linha["Rank Final"] - rank_rrf,
+                    "Score Cross-Encoder": linha["Score Cross-Encoder"]
+                })
+
+            df_comparativo_ce = pd.DataFrame(comparativo_ce)
+
+            st.dataframe(
+                df_comparativo_ce,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        st.markdown("---")
+        st.info(
+            "Ative o checkbox 'Ativar Cross-Encoder' para carregar "
+            "o modelo e visualizar a reordenação do Top-3."
+        )
