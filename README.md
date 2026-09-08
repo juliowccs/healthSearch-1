@@ -6,8 +6,7 @@ Projeto desenvolvido para o **Laboratório Prático 05 - Desafio Integrador** da
 
 ## 👥 Equipe de Desenvolvimento
 
-- João Gabriel Barreto Falcão — Documentação
-- Júlio César Carvalho Santos — Desenvolvimento
+- Júlio César Carvalho Santos — Desenvolvimento e documentação
 - Perilo Oliveira Viana Sobrinho — Desenvolvimento
 
 ---
